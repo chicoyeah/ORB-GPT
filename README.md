@@ -1,7 +1,7 @@
 # ORB!GPT
 osu! random beatmap finder made using chatgpt (the following readme is also made with chatgpt).
 
-This is a simple Python GUI application that fetches a completely random osu! beatmap with status `ranked`, `loved`, or `qualified`, using the official osu! API. It uses multithreading to speed up map discovery and includes a clean, responsive interface with light/dark mode support.
+This is a simple Python GUI application that fetches a completely random osu! beatmap with status `ranked`, `loved`, or `qualified`, using the official osu! API.
 
 ## 🔧 Features
 
