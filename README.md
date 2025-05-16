@@ -20,6 +20,7 @@ This is a simple Python GUI application that fetches a completely random osu! be
 
 - Python 3.7+
 - `requests` library
+- `Pillow` library
 
 Install dependencies with:
 
