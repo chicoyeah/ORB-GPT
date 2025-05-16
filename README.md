@@ -25,6 +25,7 @@ Install dependencies with:
 
 ```bash
 pip install requests
+pip install Pillow
 ```
 ## 🛠️ Setup
 
