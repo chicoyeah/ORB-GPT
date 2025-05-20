@@ -7,7 +7,7 @@ import io
 from PIL import Image, ImageTk
 
 # === CONFIG ===
-OSU_CLIENT_ID = "Your_Client_Id" # REPLACE THIS
+OSU_CLIENT_ID = "Your_Client_ID" # REPLACE THIS
 OSU_CLIENT_SECRET = "Your_Client_Secret" # REPLACE THIS
 NUM_ATTEMPTS = 15
 
@@ -153,6 +153,10 @@ def fetch_and_display():
 
 def on_search():
     global selected_min_rating, selected_max_rating, loading
+    # Ensure at least one mode selected
+    if not any(var.get() for var in mode_vars.values()):
+        show_feedback("Error: Select at least one mode")
+        return
     if loading:
         # Stop search
         loading = False
@@ -170,7 +174,7 @@ def on_search():
     thumbnail_label.config(image="", text="")
     copy_link_btn.config(state="disabled")
     copy_id_btn.config(state="disabled")
-    threading.Thread(target=fetch_and_display, daemon=True).start()
+    threading.Thread(target=fetch_and_display, daemon=True).start()(target=fetch_and_display, daemon=True).start()
 
 # === GUI SETUP ===
 root = tk.Tk()
