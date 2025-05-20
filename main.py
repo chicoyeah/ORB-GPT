@@ -174,7 +174,7 @@ def on_search():
     thumbnail_label.config(image="", text="")
     copy_link_btn.config(state="disabled")
     copy_id_btn.config(state="disabled")
-    threading.Thread(target=fetch_and_display, daemon=True).start()(target=fetch_and_display, daemon=True).start()
+    threading.Thread(target=fetch_and_display, daemon=True).start()
 
 # === GUI SETUP ===
 root = tk.Tk()
