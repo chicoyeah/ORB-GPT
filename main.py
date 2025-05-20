@@ -211,7 +211,12 @@ min_scale = tk.Scale(rating_frame, from_=0, to=10, resolution=0.1, orient="horiz
 min_scale.pack(side="left", padx=(0,20))
 def on_max_rating(val):
     global selected_max_rating
-    selected_max_rating = float(val)
+    val = float(val)
+    if val >= 10.0:
+        selected_max_rating = float('inf')  # No upper limit
+        max_label.config(text="Max Stars: ∞")
+    else:
+        selected_max_rating = val
     max_label.config(text=f"Max Stars: {selected_max_rating}")
 max_label = tk.Label(rating_frame, text="Max Stars: 10.0", fg="white", bg="#282c34", font=font)
 max_label.pack(side="left", padx=(0,10))
