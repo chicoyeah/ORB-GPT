@@ -14,7 +14,7 @@ This is a simple Python GUI application that fetches a completely random osu! be
 
 ## 🖼️ Screenshot
 
-![screenshot](screenshot3.png)
+![screenshot](screenshot4.png)
 
 ## 🚀 Requirements
 
