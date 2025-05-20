@@ -217,7 +217,7 @@ def on_max_rating(val):
         max_label.config(text="Max Stars: ∞")
     else:
         selected_max_rating = val
-    max_label.config(text=f"Max Stars: {selected_max_rating}")
+        max_label.config(text=f"Max Stars: {selected_max_rating}")
 max_label = tk.Label(rating_frame, text="Max Stars: 10.0", fg="white", bg="#282c34", font=font)
 max_label.pack(side="left", padx=(0,10))
 max_scale = tk.Scale(rating_frame, from_=1, to=10, resolution=0.1, orient="horizontal",
