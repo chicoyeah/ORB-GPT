@@ -7,134 +7,91 @@ import io
 from PIL import Image, ImageTk
 
 # === CONFIG ===
-OSU_CLIENT_ID = "Your_Client_ID"  # Replace with your actual client ID if necessary
-OSU_CLIENT_SECRET = "Your_Client_Secret"  # Replace with your actual client secret
-NUM_ATTEMPTS = 15  # Number of parallel attempts in one batch
+OSU_CLIENT_ID = "Your_Client_Id" # REPLACE THIS
+OSU_CLIENT_SECRET = "Your_Client_Secret" # REPLACE THIS
+NUM_ATTEMPTS = 15
 
+# Globals
 current_url = ""
 current_map_id = ""
-loading_dots = 0
-loading_running = False
-current_thumbnail_photo = None  # To keep a reference to the image
+current_thumbnail_photo = None
+mode_vars = {}
+selected_min_rating = 0.0
+selected_max_rating = 10.0
+loading = False
+mode_map = {0: "osu", 1: "taiko", 2: "fruits", 3: "mania"}
 
-# === FUNCTIONS ===
+# === API ===
 def get_osu_token():
     try:
         res = requests.post(
             "https://osu.ppy.sh/oauth/token",
-            json={
-                "client_id": OSU_CLIENT_ID,
-                "client_secret": OSU_CLIENT_SECRET,
-                "grant_type": "client_credentials",
-                "scope": "public"
-            }, timeout=10
-        )
+            json={"client_id": OSU_CLIENT_ID,
+                  "client_secret": OSU_CLIENT_SECRET,
+                  "grant_type": "client_credentials",
+                  "scope": "public"}, timeout=10)
         res.raise_for_status()
         return res.json().get('access_token')
-    except Exception as e:
-        print(f"Error getting osu! token: {e}")
+    except:
         return None
 
 
 def fetch_map_by_id(random_id, token):
+    if not loading:
+        return None
     try:
-        res = requests.get(
-            f"https://osu.ppy.sh/api/v2/beatmapsets/{random_id}",
-            headers={"Authorization": f"Bearer {token}"}, timeout=10
-        )
-        if res.status_code != 200:
-            return None
+        res = requests.get(f"https://osu.ppy.sh/api/v2/beatmapsets/{random_id}",
+                           headers={"Authorization": f"Bearer {token}"}, timeout=10)
+        res.raise_for_status()
         data = res.json()
         if data.get('status') not in ['ranked', 'loved', 'qualified', 'approved']:
             return None
-        if not any(b.get('mode') == 'osu' for b in data.get('beatmaps', [])):
+        valid = []
+        for b in data.get('beatmaps', []):
+            mode_str = mode_map.get(b.get('mode_int'))
+            rating = b.get('difficulty_rating', 0)
+            if (mode_str in mode_vars and mode_vars[mode_str].get() and
+                    selected_min_rating <= rating <= selected_max_rating):
+                valid.append((b, mode_str))
+        if not valid:
             return None
-
+        bm, mode_str = valid[0]
         title = data.get('title', 'N/A')
         artist = data.get('artist', 'N/A')
         status = data.get('status', 'N/A').capitalize()
+        rating = round(bm.get('difficulty_rating', 0), 2)
         map_id = data.get('id')
         url = f"https://osu.ppy.sh/beatmapsets/{map_id}"
         thumb = data.get('covers', {}).get('cover@2x') or data.get('covers', {}).get('cover')
-        return f"{title} [{artist}] ({status})", url, str(map_id), thumb
+        display_title = f"{title} [{artist}] ({status}, {mode_str.capitalize()}) - {rating}★"
+        return display_title, url, str(map_id), thumb
     except:
         return None
 
 
 def get_random_map(token):
-    if not token:
-        return None
-
-    results = []
-    def attempt():
-        r = fetch_map_by_id(random.randint(1, 3000000), token)
-        if r:
-            results.append(r)
-
-    threads = []
-    for _ in range(NUM_ATTEMPTS):
+    while loading:
+        threads = []
+        results = []
+        def attempt():
+            if not loading:
+                return
+            r = fetch_map_by_id(random.randint(1, 3000000), token)
+            if r:
+                results.append(r)
+        for _ in range(NUM_ATTEMPTS):
+            t = threading.Thread(target=attempt, daemon=True)
+            t.start(); threads.append(t)
+        for t in threads:
+            t.join(timeout=5)
         if results:
-            break
-        t = threading.Thread(target=attempt, daemon=True)
-        t.start(); threads.append(t)
-    for t in threads:
-        t.join(timeout=7)
-    return results[0] if results else None
+            return results[0]
+    return None
 
-
-def animate_loading():
-    global loading_dots
-    if loading_running:
-        loading_label.config(text="Searching" + "."*(loading_dots % 4))
-        loading_dots += 1
-        root.after(500, animate_loading)
-
-
-def show_random_map():
-    global loading_running, loading_dots, current_thumbnail_photo
-    loading_dots = 0
-    loading_running = True
-    button.config(state="disabled")
-    copy_link_btn.config(state="disabled")
-    copy_id_btn.config(state="disabled")
-    result_label.config(text="")
-    feedback_label.config(text="")
-    thumbnail_label.config(image=None, text="Loading thumbnail...")
-    current_thumbnail_photo = None
-
-    animate_loading()
-    threading.Thread(target=fetch_and_update_map, daemon=True).start()
-
-
-def fetch_and_update_map():
-    global current_map_id, loading_running
-    token = get_osu_token()
-    if not token:
-        root.after(0, show_error, "Failed to get API token.")
-        return
-
-    while loading_running:
-        data = get_random_map(token)
-        if data:
-            title, url, mid, thumb = data
-            current_map_id = mid
-            img_bytes = None
-            if thumb:
-                try:
-                    ir = requests.get(thumb, timeout=10)
-                    ir.raise_for_status()
-                    img_bytes = ir.content
-                except:
-                    pass
-            root.after(0, update_interface, title, url, img_bytes)
-            return
-
-
-def show_error(msg):
-    global loading_running
-    loading_running = False
-    loading_label.config(text=msg, fg="orangeRed")
-    button.config(state="normal")
+# === GUI UPDATE ===
+def show_feedback(msg):
+    feedback_label.config(text=msg)
+    feedback_label.after(2000, lambda: feedback_label.config(text=""))
 
 
 def open_map(event=None):
@@ -142,94 +99,150 @@ def open_map(event=None):
         webbrowser.open(current_url)
 
 
-def update_interface(title, url, image_content):
-    global current_url, loading_running, current_thumbnail_photo
-    loading_running = False
+def update_ui(title, url, thumbnail_bytes, map_id_str):
+    global current_url, current_map_id, current_thumbnail_photo, loading
     current_url = url
-    loading_label.config(text="")
-
-    if image_content:
-        try:
-            img = Image.open(io.BytesIO(image_content))
-            img.thumbnail((320, 200), Image.Resampling.LANCZOS)
-            current_thumbnail_photo = ImageTk.PhotoImage(img)
-            thumbnail_label.config(image=current_thumbnail_photo, text="")
-        except:
-            thumbnail_label.config(text="No thumbnail", fg="#abb2bf")
-    else:
-        thumbnail_label.config(text="No thumbnail", fg="#abb2bf")
-
-    result_label.config(text=title)
-
-    # Enable buttons
-    button.config(state="normal")
+    current_map_id = map_id_str
+    status_label.config(text="")
+    info_label.config(text=title)
     copy_link_btn.config(state="normal")
     copy_id_btn.config(state="normal")
+    # restore controls
+    min_scale.config(state="normal")
+    max_scale.config(state="normal")
+    search_btn.config(text="Search Random Beatmap", state="normal")
+    loading = False
+    # Thumbnail
+    if thumbnail_bytes:
+        try:
+            img = Image.open(io.BytesIO(thumbnail_bytes))
+            img.thumbnail((450, 300), Image.Resampling.LANCZOS)
+            current_thumbnail_photo = ImageTk.PhotoImage(img)
+            thumbnail_label.config(image=current_thumbnail_photo, text="")
+            thumbnail_label.image = current_thumbnail_photo
+        except:
+            thumbnail_label.config(text="Thumbnail N/A", image="")
+    else:
+        thumbnail_label.config(text="Thumbnail N/A", image="")
+    for widget in (result_frame, thumbnail_label, info_label):
+        widget.unbind('<Button-1>')
+        widget.bind('<Button-1>', open_map)
 
-    # Make card clickable
-    for widget in (card, thumbnail_label, result_label):
-        widget.config(cursor="hand2")
-        widget.unbind("<Button-1>")
-        widget.bind("<Button-1>", open_map)
+
+def fetch_and_display():
+    token = get_osu_token()
+    if not token:
+        root.after(0, lambda: status_label.config(text="Failed to get API token"))
+        root.after(0, lambda: update_ui("", "", None, ""))
+        return
+    res = get_random_map(token)
+    if res and loading:
+        title, url, mid, thumb_url = res
+        t_bytes = None
+        if thumb_url:
+            try:
+                r = requests.get(thumb_url, timeout=10)
+                r.raise_for_status()
+                t_bytes = r.content
+            except:
+                t_bytes = None
+        root.after(0, update_ui, title, url, t_bytes, mid)
+    else:
+        root.after(0, lambda: update_ui("", "", None, ""))
 
 
-def copy_link():
-    if current_url:
-        root.clipboard_clear(); root.clipboard_append(current_url)
-        feedback_label.config(text="Link copied!", fg="#77dd77")
-        root.after(2000, lambda: feedback_label.config(text=""))
+def on_search():
+    global selected_min_rating, selected_max_rating, loading
+    if loading:
+        # Stop search
+        loading = False
+        return
+    if selected_max_rating < selected_min_rating:
+        show_feedback("Error: Max stars < Min stars")
+        return
+    loading = True
+    search_btn.config(text="Stop Search")
+    # disable controls
+    min_scale.config(state="disabled")
+    max_scale.config(state="disabled")
+    status_label.config(text="Searching...")
+    info_label.config(text="")
+    thumbnail_label.config(image="", text="")
+    copy_link_btn.config(state="disabled")
+    copy_id_btn.config(state="disabled")
+    threading.Thread(target=fetch_and_display, daemon=True).start()
 
-
-def copy_id():
-    if current_map_id:
-        root.clipboard_clear(); root.clipboard_append(current_map_id)
-        feedback_label.config(text="ID copied!", fg="#77dd77")
-        root.after(2000, lambda: feedback_label.config(text=""))
-
-# === GUI ===
+# === GUI SETUP ===
 root = tk.Tk()
 root.title("osu! Random Beatmap Finder")
 root.configure(bg="#282c34")
 root.resizable(False, False)
-
-font_style = ("Segoe UI", 11)
-title_style = ("Segoe UI Semibold", 12)
-btn_style = ("Segoe UI", 12, "bold")
-
+font = ("Segoe UI", 11)
 main = tk.Frame(root, bg="#282c34", padx=20, pady=20)
 main.pack()
-
-button = tk.Button(main, text="Get Random Beatmap", command=show_random_map,
-                   font=btn_style, bg="#61afef", fg="white",
-                   relief="flat", activebackground="#5298d1", activeforeground="white")
-button.pack(pady=(0,10))
-
-loading_label = tk.Label(main, text="", font=font_style, fg="#abb2bf", bg="#282c34")
-loading_label.pack(pady=5)
-
-card = tk.Frame(main, bg="#3a3f4b", bd=2, relief="groove")
-card.pack(pady=10)
-
-thumbnail_label = tk.Label(card, bg="#3a3f4b", text="No map loaded", fg="#abb2bf", font=font_style)
+# Mode selection
+mode_frame = tk.Frame(main, bg="#282c34")
+mode_frame.pack(pady=5)
+for m in ["osu", "taiko", "fruits", "mania"]:
+    var = tk.BooleanVar(value=True)
+    mode_vars[m] = var
+    cb = tk.Checkbutton(mode_frame, text=m.capitalize(), variable=var,
+                        bg="#282c34", fg="white", selectcolor="#3e4451",
+                        activebackground="#282c34", activeforeground="white")
+    cb.pack(side="left", padx=5)
+# Star rating filters
+rating_frame = tk.Frame(main, bg="#282c34")
+rating_frame.pack(pady=5)
+def on_min_rating(val):
+    global selected_min_rating
+    selected_min_rating = float(val)
+    min_label.config(text=f"Min Stars: {selected_min_rating}")
+min_label = tk.Label(rating_frame, text="Min Stars: 0.0", fg="white", bg="#282c34", font=font)
+min_label.pack(side="left", padx=(0,10))
+min_scale = tk.Scale(rating_frame, from_=0, to=10, resolution=0.1, orient="horizontal",
+                     bg="#282c34", fg="white", highlightthickness=0,
+                     command=on_min_rating, length=180)
+min_scale.pack(side="left", padx=(0,20))
+def on_max_rating(val):
+    global selected_max_rating
+    selected_max_rating = float(val)
+    max_label.config(text=f"Max Stars: {selected_max_rating}")
+max_label = tk.Label(rating_frame, text="Max Stars: 10.0", fg="white", bg="#282c34", font=font)
+max_label.pack(side="left", padx=(0,10))
+max_scale = tk.Scale(rating_frame, from_=1, to=10, resolution=0.1, orient="horizontal",
+                     bg="#282c34", fg="white", highlightthickness=0,
+                     command=on_max_rating, length=180)
+max_scale.set(10.0)
+max_scale.pack(side="left")
+# Search/Stop button
+search_btn = tk.Button(main, text="Search Random Beatmap", command=on_search,
+                       font=("Segoe UI",12,"bold"), bg="#61afef", fg="white",
+                       relief="flat", activebackground="#5298d1", activeforeground="white", pady=8)
+search_btn.pack(pady=10)
+# Status label
+status_label = tk.Label(main, text="", font=font, fg="orange", bg="#282c34")
+status_label.pack()
+# Result card
+result_frame = tk.Frame(main, bg="#3e4451", bd=2, relief="ridge", cursor="hand2")
+result_frame.pack(pady=10, fill="x")
+thumbnail_label = tk.Label(result_frame, bg="#3e4451", text="", font=font)
 thumbnail_label.pack(pady=10)
-
-result_label = tk.Label(card, text="", font=title_style, fg="#e5c07b", bg="#3a3f4b", wraplength=460)
-result_label.pack(pady=5)
-
+info_label = tk.Label(result_frame, text="No map loaded.", font=font, fg="white", bg="#3e4451", wraplength=450)
+info_label.pack(pady=5)
+# Copy buttons
 copy_frame = tk.Frame(main, bg="#282c34")
 copy_frame.pack(pady=5)
-
-copy_link_btn = tk.Button(copy_frame, text="Copy Link", command=copy_link,
-                           font=("Segoe UI",10), bg="#4b5263", fg="white",
-                           relief="flat", activebackground="#5c6370", activeforeground="white", state="disabled")
+copy_link_btn = tk.Button(copy_frame, text="Copy Link",
+                          command=lambda: [root.clipboard_clear(), root.clipboard_append(current_url), show_feedback("Link copied!")],
+                          font=("Segoe UI",10), bg="#4b5263", fg="white", relief="flat",
+                          activebackground="#5c6370", activeforeground="white", state="disabled")
 copy_link_btn.pack(side="left", padx=5)
-
-copy_id_btn = tk.Button(copy_frame, text="Copy ID", command=copy_id,
-                         font=("Segoe UI",10), bg="#4b5263", fg="white",
-                         relief="flat", activebackground="#5c6370", activeforeground="white", state="disabled")
+copy_id_btn = tk.Button(copy_frame, text="Copy ID",
+                        command=lambda: [root.clipboard_clear(), root.clipboard_append(current_map_id), show_feedback("ID copied!")],
+                        font=("Segoe UI",10), bg="#4b5263", fg="white", relief="flat",
+                        activebackground="#5c6370", activeforeground="white", state="disabled")
 copy_id_btn.pack(side="left", padx=5)
-
-feedback_label = tk.Label(main, text="", font=font_style, fg="#77dd77", bg="#282c34")
+# Feedback label
+feedback_label = tk.Label(main, text="", font=font, fg="#77dd77", bg="#282c34")
 feedback_label.pack(pady=5)
-
 root.mainloop()
