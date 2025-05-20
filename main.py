@@ -132,8 +132,7 @@ def update_ui(title, url, thumbnail_bytes, map_id_str):
 def fetch_and_display():
     token = get_osu_token()
     if not token:
-        root.after(0, lambda: status_label.config(text="Failed to get API token"))
-        root.after(0, lambda: update_ui("", "", None, ""))
+        root.after(0, lambda: update_ui("Failed to get API token", "", None, ""))
         return
     res = get_random_map(token)
     if res and loading:
