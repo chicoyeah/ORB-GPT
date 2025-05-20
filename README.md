@@ -14,19 +14,19 @@ This is a simple Python GUI application that fetches a completely random osu! be
 
 ## 🖼️ Screenshot
 
-![screenshot](screenshot2.png)
+![screenshot](screenshot3.png)
 
 ## 🚀 Requirements
 
 - Python 3.7+
 - `requests` library
-- `Pillow` library
+- `pillow` library
 
 Install dependencies with:
 
 ```bash
 pip install requests
-pip install Pillow
+pip install pillow
 ```
 ## 🛠️ Setup
 
