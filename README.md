@@ -6,7 +6,7 @@ This is a simple Python GUI application that fetches a completely random osu! be
 ## 🔧 Features
 
 - Get a random beatmap with status `ranked`, `loved`, or `qualified`
-- Filters out maps that are not in `osu!standard` mode
+- Filters maps from chosen game modes
 - Fully responsive GUI
 - Clickable beatmap link and buttons to copy:
   - beatmapset link
