@@ -164,6 +164,9 @@ def on_search():
     if selected_max_rating < selected_min_rating:
         show_feedback("Error: Max stars < Min stars")
         return
+    if selected_max_rating == selected_min_rating:
+        show_feedback("Error: Max stars = Min stars")
+        return
     loading = True
     search_btn.config(text="Stop Search")
     # disable controls
