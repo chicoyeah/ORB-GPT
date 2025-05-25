@@ -16,6 +16,9 @@ This is a simple Python GUI application that fetches a completely random osu! be
 
 ![screenshot](screenshot4.png)
 
+## Usage on Windows
+- Download .exe file and run it. For CLI usage check below.
+
 ## 🚀 Requirements
 
 - Python 3.7+
