@@ -62,26 +62,37 @@ def fetch_map_by_id(random_id, token):
                            headers={"Authorization": f"Bearer {token}"}, timeout=10)
         res.raise_for_status()
         data = res.json()
-        if data.get('status') not in ['ranked', 'loved', 'qualified', 'approved']:
+        if not accept_status_var.get() and data.get('status') not in ['ranked', 'loved', 'qualified', 'approved']:
             return None
-        valid = []
+        mode_maps = []
         for b in data.get('beatmaps', []):
             mode_str = mode_map.get(b.get('mode_int'))
             rating = b.get('difficulty_rating', 0)
-            if (mode_str in mode_vars and mode_vars[mode_str].get() and
-                    selected_min_rating <= rating <= selected_max_rating):
-                valid.append((b, mode_str))
+            if mode_str in mode_vars and mode_vars[mode_str].get():
+                mode_maps.append((b, mode_str))
+
+        valid = [
+            (b, mode_str) for b, mode_str in mode_maps
+            if selected_min_rating <= b.get('difficulty_rating', 0) <= selected_max_rating
+        ]
         if not valid:
             return None
         bm, mode_str = valid[0]
         title = data.get('title', 'N/A')
         artist = data.get('artist', 'N/A')
         status = data.get('status', 'N/A').capitalize()
-        rating = round(bm.get('difficulty_rating', 0), 2)
+        ratings = [b.get('difficulty_rating', 0) for b, selected_mode in mode_maps
+               if selected_mode == mode_str]
+        min_rating = round(min(ratings), 2)
+        max_rating = round(max(ratings), 2)
         map_id = data.get('id')
         url = f"https://osu.ppy.sh/beatmapsets/{map_id}"
         thumb = data.get('covers', {}).get('cover@2x') or data.get('covers', {}).get('cover')
-        display_title = f"{title} [{artist}] ({status}, {mode_str.capitalize()}) - {rating}★"
+        difficulty = f"{min_rating}★-{max_rating}★" if min_rating != max_rating else f"{min_rating}★"
+        mode_label = mode_str.capitalize()
+        if mode_str == "mania":
+            mode_label += f" {round(bm.get('cs', 0))}K"
+        display_title = f"{title} [{artist}] ({status}, {mode_label}) - {difficulty}"
         return display_title, url, str(map_id), thumb
     except:
         return None
@@ -253,6 +264,15 @@ for m in ["osu", "taiko", "fruits", "mania"]:
 
 rating_frame = tk.Frame(main, bg="#282c34")
 rating_frame.pack(pady=5)
+
+status_frame = tk.Frame(main, bg="#282c34")
+status_frame.pack(pady=(0,5))
+accept_status_var = tk.BooleanVar(value=False)
+accept_status_cb = tk.Checkbutton(status_frame, text="Accept Any Beatmap Status",
+                                  variable=accept_status_var,
+                                  bg="#282c34", fg="white", selectcolor="#3e4451",
+                                  activebackground="#282c34", activeforeground="white")
+accept_status_cb.pack(side="left")
 
 def on_min_rating(val):
     global selected_min_rating
