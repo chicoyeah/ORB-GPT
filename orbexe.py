@@ -9,7 +9,8 @@ import os
 from PIL import Image, ImageTk
 
 # === CONFIG ===
-CONFIG_FILE = "osu_credentials.json"
+CONFIG_FILE = "orb_config.json"
+LEGACY_CONFIG_FILE = "osu_credentials.json"
 NUM_ATTEMPTS = 15
 
 # Globals
@@ -22,22 +23,47 @@ selected_max_rating = 10.0
 loading = False
 mode_map = {0: "osu", 1: "taiko", 2: "fruits", 3: "mania"}
 
+DEFAULT_CONFIG = {
+    "client_id": None,
+    "client_secret": None,
+    "min_rating": 0.0,
+    "max_rating": 10.0,
+    "modes": {"osu": True, "taiko": True, "fruits": True, "mania": True},
+    "accept_any_status": False,
+}
+
 # === CREDENTIALS ===
-def load_credentials():
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, "r") as f:
-                data = json.load(f)
-                return data.get("client_id"), data.get("client_secret")
-        except:
-            return None, None
-    return None, None
+def load_config():
+    for config_file in (CONFIG_FILE, LEGACY_CONFIG_FILE):
+        if os.path.exists(config_file):
+            try:
+                with open(config_file, "r") as f:
+                    loaded_config = DEFAULT_CONFIG.copy()
+                    loaded_config.update(json.load(f))
+                    return loaded_config
+            except (OSError, json.JSONDecodeError):
+                pass
+    return DEFAULT_CONFIG.copy()
 
-def save_credentials(cid, secret):
+
+config = load_config()
+OSU_CLIENT_ID = config.get("client_id")
+OSU_CLIENT_SECRET = config.get("client_secret")
+selected_min_rating = float(config.get("min_rating", 0.0))
+selected_max_rating = float(config.get("max_rating", 10.0))
+
+
+def save_config():
+    config.update({
+        "client_id": OSU_CLIENT_ID,
+        "client_secret": OSU_CLIENT_SECRET,
+        "min_rating": selected_min_rating,
+        "max_rating": 10.0 if selected_max_rating == float("inf") else selected_max_rating,
+        "modes": {mode: var.get() for mode, var in mode_vars.items()},
+        "accept_any_status": accept_status_var.get(),
+    })
     with open(CONFIG_FILE, "w") as f:
-        json.dump({"client_id": cid, "client_secret": secret}, f)
-
-OSU_CLIENT_ID, OSU_CLIENT_SECRET = load_credentials()
+        json.dump(config, f, indent=2)
 
 # === API ===
 def get_osu_token():
@@ -234,7 +260,7 @@ def open_credentials_window():
         global OSU_CLIENT_ID, OSU_CLIENT_SECRET
         OSU_CLIENT_ID = cid_entry.get()
         OSU_CLIENT_SECRET = secret_entry.get()
-        save_credentials(OSU_CLIENT_ID, OSU_CLIENT_SECRET)
+        save_config()
         cred_win.destroy()
 
     tk.Button(cred_win, text="Save", command=save).pack(pady=10)
@@ -255,11 +281,12 @@ cred_btn.pack(pady=(0,10))
 mode_frame = tk.Frame(main, bg="#282c34")
 mode_frame.pack(pady=5)
 for m in ["osu", "taiko", "fruits", "mania"]:
-    var = tk.BooleanVar(value=True)
+    var = tk.BooleanVar(value=config.get("modes", {}).get(m, True))
     mode_vars[m] = var
     cb = tk.Checkbutton(mode_frame, text=m.capitalize(), variable=var,
                         bg="#282c34", fg="white", selectcolor="#3e4451",
-                        activebackground="#282c34", activeforeground="white")
+                        activebackground="#282c34", activeforeground="white",
+                        command=save_config)
     cb.pack(side="left", padx=5)
 
 rating_frame = tk.Frame(main, bg="#282c34")
@@ -267,17 +294,19 @@ rating_frame.pack(pady=5)
 
 status_frame = tk.Frame(main, bg="#282c34")
 status_frame.pack(pady=(0,5))
-accept_status_var = tk.BooleanVar(value=False)
+accept_status_var = tk.BooleanVar(value=config.get("accept_any_status", False))
 accept_status_cb = tk.Checkbutton(status_frame, text="Accept Any Beatmap Status",
                                   variable=accept_status_var,
                                   bg="#282c34", fg="white", selectcolor="#3e4451",
-                                  activebackground="#282c34", activeforeground="white")
+                                  activebackground="#282c34", activeforeground="white",
+                                  command=save_config)
 accept_status_cb.pack(side="left")
 
 def on_min_rating(val):
     global selected_min_rating
     selected_min_rating = float(val)
     min_label.config(text=f"Min Stars: {selected_min_rating}")
+    save_config()
 
 def on_max_rating(val):
     global selected_max_rating
@@ -288,6 +317,7 @@ def on_max_rating(val):
     else:
         selected_max_rating = val
         max_label.config(text=f"Max Stars: {selected_max_rating}")
+    save_config()
 
 min_label = tk.Label(rating_frame, text="Min Stars: 0.0", fg="white", bg="#282c34", font=font)
 min_label.pack(side="left", padx=(0,10))
@@ -303,6 +333,9 @@ max_scale = tk.Scale(rating_frame, from_=1, to=10, resolution=0.1, orient="horiz
                      command=on_max_rating, length=180)
 max_scale.set(10.0)
 max_scale.pack(side="left")
+
+min_scale.set(selected_min_rating)
+max_scale.set(selected_max_rating if selected_max_rating != float("inf") else 10.0)
 
 search_btn = tk.Button(main, text="Search Random Beatmap", command=on_search,
                        font=("Segoe UI",12,"bold"), bg="#61afef", fg="white",
