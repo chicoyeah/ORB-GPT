@@ -20,7 +20,7 @@ This is a simple Python GUI application that fetches a completely random osu! be
 
 ## Usage
 - For the python version download the EXE file and run it.
-- For the userscript version [CLICK HERE](https://raw.githubusercontent.com/chicoyeah/ORB-GPT/main/orb!monkey-1.0.user.js)
+- For the userscript version [CLICK HERE](https://raw.githubusercontent.com/chicoyeah/ORB-GPT/main/orb!monkey.user.js)
 - For CLI usage check below.
 
 ## 🚀 Requirements
