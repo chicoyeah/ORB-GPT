@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         orb!monkey
 // @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  Find random beatmaps with an option to copy only the mapset ID to clipboard
-// @author       chicoyeah
+// @version      1.1
+// @description  Find random beatmaps with dynamic max ID fetching (strict check, no fallback)
+// @author       Chicoyeah
 // @match        https://osu.ppy.sh/*
 // @connect      osu.ppy.sh
 // @grant        GM_xmlhttpRequest
@@ -15,6 +15,8 @@
 
 (function () {
     'use strict';
+
+    let maxBeatmapId = null;
 
     function getRandomColor() {
         const hue = Math.floor(Math.random() * 360);
@@ -295,6 +297,29 @@
         });
     }
 
+    function fetchLatestWipMapId(token) {
+        return new Promise((resolve) => {
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: "https://osu.ppy.sh/api/v2/beatmapsets/search?s=wip&sort=id_desc",
+                headers: { "Authorization": `Bearer ${token}` },
+                onload: function (response) {
+                    if (response.status === 200) {
+                        try {
+                            const data = JSON.parse(response.responseText);
+                            if (data.beatmapsets && data.beatmapsets.length > 0) {
+                                resolve(data.beatmapsets[0].id);
+                                return;
+                            }
+                        } catch (e) {}
+                    }
+                    resolve(null);
+                },
+                onerror: () => resolve(null)
+            });
+        });
+    }
+
     function fetchMapById(randomId, token) {
         return new Promise((resolve) => {
             GM_xmlhttpRequest({
@@ -368,7 +393,17 @@
             return;
         }
 
-        statusEl.innerText = "Fast search in progress...";
+        statusEl.innerText = "Fetching Max ID...";
+        maxBeatmapId = await fetchLatestWipMapId(token);
+
+        if (!maxBeatmapId) {
+            statusEl.innerText = "Error: Failed to fetch Max ID!";
+            searchBtn.innerText = "Search & Open Beatmap";
+            searchBtn.disabled = false;
+            return;
+        }
+
+        statusEl.innerText = `Max ID: ${maxBeatmapId}. Searching...`;
 
         let foundMap = null;
         let batchCount = 0;
@@ -377,10 +412,10 @@
 
         while (!foundMap && batchCount < maxBatches) {
             batchCount++;
-            statusEl.innerText = `Checking maps (Batch ${batchCount}/${maxBatches})...`;
+            statusEl.innerText = `Checking (Batch ${batchCount}/${maxBatches}) [Max: ${maxBeatmapId}]...`;
 
             const promises = Array.from({ length: batchSize }, () => {
-                const randomId = Math.floor(Math.random() * 2200000) + 1;
+                const randomId = Math.floor(Math.random() * maxBeatmapId) + 1;
                 return fetchMapById(randomId, token);
             });
 
