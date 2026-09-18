@@ -12,11 +12,13 @@ This is a simple Python GUI application that fetches a completely random osu! be
   - beatmapset link
   - beatmapset ID
 
-## 🖼️ Screenshot
+## 🖼️ Screenshots
 
-![screenshot](screenshot4.png)
+| 🖥️ Python Script | 🌐 Browser Extension (orb!monkey) |
+| :---: | :---: |
+| ![Python Script](screenshot4.png) | ![orb!monkey Extension](screenshot5.png) |
 
-## Usage on Windows
+## Usage
 - Download .exe file and run it. For CLI usage check below.
 
 ## 🚀 Requirements
