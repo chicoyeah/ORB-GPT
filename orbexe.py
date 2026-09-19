@@ -80,6 +80,20 @@ def get_osu_token():
         return None
 
 
+def get_latest_wip_map_id(token):
+    try:
+        res = requests.get(
+            "https://osu.ppy.sh/api/v2/beatmapsets/search",
+            params={"s": "wip", "sort": "updated_desc", "limit": 1},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10)
+        res.raise_for_status()
+        beatmapsets = res.json().get("beatmapsets", [])
+        return max((beatmapset.get("id", 0) for beatmapset in beatmapsets), default=0)
+    except:
+        return 0
+
+
 def fetch_map_by_id(random_id, token):
     if not loading:
         return None
@@ -124,14 +138,14 @@ def fetch_map_by_id(random_id, token):
         return None
 
 
-def get_random_map(token):
+def get_random_map(token, max_map_id):
     while loading:
         threads = []
         results = []
         def attempt():
             if not loading:
                 return
-            r = fetch_map_by_id(random.randint(1, 3000000), token)
+            r = fetch_map_by_id(random.randint(1, max_map_id), token)
             if r:
                 results.append(r)
         for _ in range(NUM_ATTEMPTS):
@@ -188,7 +202,12 @@ def fetch_and_display():
         root.after(0, lambda: status_label.config(text="Failed to get API token"))
         root.after(0, lambda: update_ui("", "", None, ""))
         return
-    res = get_random_map(token)
+    latest_wip_map_id = get_latest_wip_map_id(token)
+    if not latest_wip_map_id:
+        root.after(0, lambda: status_label.config(text="Failed to find latest WIP beatmap"))
+        root.after(0, lambda: update_ui("", "", None, ""))
+        return
+    res = get_random_map(token, latest_wip_map_id)
     if res and loading:
         title, url, mid, thumb_url = res
         t_bytes = None
