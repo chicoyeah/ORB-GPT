@@ -1,12 +1,11 @@
 // ==UserScript==
 // @name         orb!monkey
 // @namespace    http://tampermonkey.net/
-// @version      1.1
-// @description  Find random beatmaps with dynamic max ID fetching (strict check, no fallback)
+// @version      1.2
+// @description  Find random beatmaps using your osu! login (no API keys needed)
 // @author       Chicoyeah
 // @match        https://osu.ppy.sh/*
 // @connect      osu.ppy.sh
-// @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_setClipboard
@@ -37,8 +36,6 @@
         const oldContainer = document.getElementById('osu-random-finder');
         if (oldBtn) oldBtn.remove();
         if (oldContainer) oldContainer.remove();
-
-        const hasSavedCreds = GM_getValue('osu_client_id', '') && GM_getValue('osu_client_secret', '');
 
         const savedOsu = GM_getValue('rf_mode_osu', true);
         const savedTaiko = GM_getValue('rf_mode_taiko', true);
@@ -104,20 +101,7 @@
         container.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                 <span style="font-weight: 600; color: ${mainColor}; font-size: 13px;">orb!monkey</span>
-                <div>
-                    <button id="rf-toggle-creds" title="OAuth Settings" style="background: none; border: none; color: #5c6370; cursor: pointer; font-size: 14px; padding: 0 2px;">⚙️</button>
-                    <button id="rf-close-ui" title="Close" style="background: none; border: none; color: #5c6370; cursor: pointer; font-size: 14px; padding: 0 2px; margin-left: 4px;">✕</button>
-                </div>
-            </div>
-
-            <div id="rf-creds-box" style="display: ${hasSavedCreds ? 'none' : 'block'}; margin-bottom: 10px; background: #21252b; padding: 8px; border-radius: 6px; border: 1px solid #3e4451;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                    <span style="font-size: 11px; color: #e5c07b;">OAuth2 API Credentials</span>
-                    <a href="https://osu.ppy.sh/home/account/edit#oauth" target="_blank" rel="noopener noreferrer" style="color: ${mainColor}; text-decoration: underline; font-size: 10px; font-weight: 600;">🔗 Get Keys</a>
-                </div>
-                <input type="password" id="rf-client-id" placeholder="Client ID" style="width: 100%; padding: 4px 6px; margin-bottom: 4px; border-radius: 4px; border: 1px solid #3e4451; background: #282c34; color: #fff; font-size: 11px;" value="${GM_getValue('osu_client_id', '')}">
-                <input type="password" id="rf-client-secret" placeholder="Client Secret" style="width: 100%; padding: 4px 6px; margin-bottom: 6px; border-radius: 4px; border: 1px solid #3e4451; background: #282c34; color: #fff; font-size: 11px;" value="${GM_getValue('osu_client_secret', '')}">
-                <button id="rf-save-creds" style="width: 100%; padding: 4px; background: #98c379; color: #1e1e1e; border: none; border-radius: 4px; font-weight: 600; cursor: pointer; font-size: 11px;">Save & Hide</button>
+                <button id="rf-close-ui" title="Close" style="background: none; border: none; color: #5c6370; cursor: pointer; font-size: 14px; padding: 0 2px;">✕</button>
             </div>
 
             <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 11px;">
@@ -156,7 +140,7 @@
             <button id="rf-search-btn" style="
                 width: 100%;
                 padding: 6px;
-                background-color: ${mainColor};
+                background: ${mainColor};
                 color: #1c1e24;
                 border: none;
                 border-radius: 4px;
@@ -218,27 +202,6 @@
         if (anyCb) anyCb.onchange = (e) => GM_setValue('rf_any_status', e.target.checked);
         if (autoCopyCb) autoCopyCb.onchange = (e) => GM_setValue('rf_auto_copy', e.target.checked);
 
-        const credsBtn = document.getElementById('rf-toggle-creds');
-        if (credsBtn) {
-            credsBtn.onclick = () => {
-                const box = document.getElementById('rf-creds-box');
-                if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
-            };
-        }
-
-        const saveCredsBtn = document.getElementById('rf-save-creds');
-        if (saveCredsBtn) {
-            saveCredsBtn.onclick = () => {
-                const cid = document.getElementById('rf-client-id').value.trim();
-                const sec = document.getElementById('rf-client-secret').value.trim();
-                GM_setValue('osu_client_id', cid);
-                GM_setValue('osu_client_secret', sec);
-                document.getElementById('rf-creds-box').style.display = 'none';
-                document.getElementById('rf-status').innerText = "Credentials saved!";
-                setTimeout(() => document.getElementById('rf-status').innerText = "", 1500);
-            };
-        }
-
         const minSlider = document.getElementById('rf-min-stars');
         const maxSlider = document.getElementById('rf-max-stars');
 
@@ -270,134 +233,123 @@
 
     const modeMap = { 0: 'osu', 1: 'taiko', 2: 'fruits', 3: 'mania' };
 
-    function getApiToken(clientId, clientSecret) {
-        return new Promise((resolve) => {
-            GM_xmlhttpRequest({
-                method: "POST",
-                url: "https://osu.ppy.sh/oauth/token",
-                headers: { "Content-Type": "application/json" },
-                data: JSON.stringify({
-                    client_id: parseInt(clientId),
-                    client_secret: clientSecret,
-                    grant_type: "client_credentials",
-                    scope: "public"
-                }),
-                onload: function (res) {
-                    if (res.status === 200) {
-                        try {
-                            const data = JSON.parse(res.responseText);
-                            resolve(data.access_token);
-                        } catch (e) { resolve(null); }
-                    } else {
-                        resolve(null);
-                    }
-                },
-                onerror: () => resolve(null)
-            });
-        });
+    // Uses the logged-in osu! website session (cookie + CSRF token), so no API keys are needed
+    function isLoggedIn() {
+        const u = unsafeWindow.currentUser;
+        return !!(u && u.id);
     }
 
-    function fetchLatestWipMapId(token) {
-        return new Promise((resolve) => {
-            GM_xmlhttpRequest({
-                method: "GET",
-                url: "https://osu.ppy.sh/api/v2/beatmapsets/search?s=wip&sort=id_desc",
-                headers: { "Authorization": `Bearer ${token}` },
-                onload: function (response) {
-                    if (response.status === 200) {
-                        try {
-                            const data = JSON.parse(response.responseText);
-                            if (data.beatmapsets && data.beatmapsets.length > 0) {
-                                resolve(data.beatmapsets[0].id);
-                                return;
-                            }
-                        } catch (e) {}
-                    }
-                    resolve(null);
-                },
-                onerror: () => resolve(null)
-            });
-        });
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    let backoffUntil = 0;
+
+    // Fetch with retry/backoff on rate limiting (429). Returns the Response, or null on persistent failure.
+    async function fetchWithBackoff(url, options, statusEl) {
+        for (let attempt = 0; attempt < 5; attempt++) {
+            const wait = backoffUntil - Date.now();
+            if (wait > 0) await sleep(wait);
+            try {
+                const res = await fetch(url, options);
+                if (res.status !== 429 && res.status < 500) return res;
+                const retryAfter = parseInt(res.headers.get('Retry-After') || '0', 10);
+                const delay = Math.max(retryAfter * 1000, 2000 * Math.pow(2, attempt));
+                backoffUntil = Math.max(backoffUntil, Date.now() + delay);
+                if (statusEl) statusEl.innerText = `Rate limited, waiting ${Math.ceil(delay / 1000)}s...`;
+            } catch (e) {
+                await sleep(1000);
+            }
+        }
+        return null;
     }
 
-    function fetchMapById(randomId, token) {
-        return new Promise((resolve) => {
-            GM_xmlhttpRequest({
-                method: "GET",
-                url: `https://osu.ppy.sh/api/v2/beatmapsets/${randomId}`,
-                headers: { "Authorization": `Bearer ${token}` },
-                onload: function (response) {
-                    if (response.status !== 200) return resolve(null);
-                    try {
-                        const data = JSON.parse(response.responseText);
-                        const acceptAnyStatus = document.getElementById('rf-any-status').checked;
+    async function fetchLatestWipMapId(statusEl) {
+        const cached = GM_getValue('rf_max_id_cache', null);
+        if (cached && Date.now() - cached.time < 10 * 60 * 1000) return cached.id;
 
-                        if (!acceptAnyStatus && !['ranked', 'loved', 'qualified', 'approved'].includes(data.status)) {
-                            return resolve(null);
-                        }
+        const csrf = document.querySelector('meta[name="csrf-token"]');
+        const res = await fetchWithBackoff('https://osu.ppy.sh/beatmapsets/search?s=wip&sort=id_desc', {
+            credentials: 'include',
+            headers: {
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'X-Requested-With': 'XMLHttpRequest',
+                ...(csrf ? { 'X-CSRF-Token': csrf.content } : {})
+            }
+        }, statusEl);
 
-                        const minStars = parseFloat(document.getElementById('rf-min-stars').value);
-                        const maxStars = parseFloat(document.getElementById('rf-max-stars').value);
+        let id = null;
+        if (res && res.ok) {
+            try {
+                const data = await res.json();
+                if (data.beatmapsets && data.beatmapsets.length > 0) id = data.beatmapsets[0].id;
+            } catch (e) {}
+        }
+        if (id) {
+            GM_setValue('rf_max_id_cache', { id, time: Date.now() });
+            return id;
+        }
+        return cached ? cached.id : null;
+    }
 
-                        const activeModes = {
-                            osu: document.getElementById('rf-osu').checked,
-                            taiko: document.getElementById('rf-taiko').checked,
-                            fruits: document.getElementById('rf-fruits').checked,
-                            mania: document.getElementById('rf-mania').checked
-                        };
+    async function fetchMapById(randomId, statusEl) {
+        let data = null;
+        try {
+            const res = await fetchWithBackoff(`https://osu.ppy.sh/beatmapsets/${randomId}`, { credentials: 'include' }, statusEl);
+            if (!res || !res.ok) return null;
+            const html = await res.text();
+            const m = html.match(/<script id="json-beatmapset" type="application\/json">([\s\S]*?)<\/script>/);
+            if (!m) return null;
+            data = JSON.parse(m[1]);
+        } catch (e) {
+            return null;
+        }
+        if (!data) return null;
 
-                        const validBeatmaps = (data.beatmaps || []).filter(b => {
-                            const modeStr = modeMap[b.mode_int];
-                            const rating = b.difficulty_rating || 0;
-                            return activeModes[modeStr] && rating >= minStars && rating <= maxStars;
-                        });
+        const acceptAnyStatus = document.getElementById('rf-any-status').checked;
 
-                        if (validBeatmaps.length === 0) return resolve(null);
+        if (!acceptAnyStatus && !['ranked', 'loved', 'qualified', 'approved'].includes(data.status)) {
+            return null;
+        }
 
-                        resolve({
-                            id: data.id.toString(),
-                            url: `https://osu.ppy.sh/beatmapsets/${data.id}`
-                        });
-                    } catch (e) {
-                        resolve(null);
-                    }
-                },
-                onerror: () => resolve(null)
-            });
+        const minStars = parseFloat(document.getElementById('rf-min-stars').value);
+        const maxStars = parseFloat(document.getElementById('rf-max-stars').value);
+
+        const activeModes = {
+            osu: document.getElementById('rf-osu').checked,
+            taiko: document.getElementById('rf-taiko').checked,
+            fruits: document.getElementById('rf-fruits').checked,
+            mania: document.getElementById('rf-mania').checked
+        };
+
+        const validBeatmaps = (data.beatmaps || []).filter(b => {
+            const modeStr = modeMap[b.mode_int];
+            const rating = b.difficulty_rating || 0;
+            return activeModes[modeStr] && rating >= minStars && rating <= maxStars;
         });
+
+        if (validBeatmaps.length === 0) return null;
+
+        return {
+            id: data.id.toString(),
+            url: `https://osu.ppy.sh/beatmapsets/${data.id}`
+        };
     }
 
     async function startSearch() {
         const statusEl = document.getElementById('rf-status');
         const searchBtn = document.getElementById('rf-search-btn');
 
-        const clientId = GM_getValue('osu_client_id', '');
-        const clientSecret = GM_getValue('osu_client_secret', '');
-
-        if (!clientId || !clientSecret) {
-            document.getElementById('rf-creds-box').style.display = 'block';
-            statusEl.innerText = "Enter Client ID and Secret!";
+        if (!isLoggedIn()) {
+            statusEl.innerText = "Please log in to osu! first!";
             return;
         }
 
         searchBtn.innerText = "Searching...";
         searchBtn.disabled = true;
-        statusEl.innerText = "Authenticating...";
-
-        const token = await getApiToken(clientId, clientSecret);
-        if (!token) {
-            document.getElementById('rf-creds-box').style.display = 'block';
-            statusEl.innerText = "Invalid credentials!";
-            searchBtn.innerText = "Search & Open Beatmap";
-            searchBtn.disabled = false;
-            return;
-        }
-
         statusEl.innerText = "Fetching Max ID...";
-        maxBeatmapId = await fetchLatestWipMapId(token);
+
+        maxBeatmapId = await fetchLatestWipMapId(statusEl);
 
         if (!maxBeatmapId) {
-            statusEl.innerText = "Error: Failed to fetch Max ID!";
+            statusEl.innerText = "Error: Failed to fetch Max ID! (try reloading/logging in again)";
             searchBtn.innerText = "Search & Open Beatmap";
             searchBtn.disabled = false;
             return;
@@ -407,8 +359,8 @@
 
         let foundMap = null;
         let batchCount = 0;
-        const maxBatches = 10;
-        const batchSize = 15;
+        const maxBatches = 40;
+        const batchSize = 4;
 
         while (!foundMap && batchCount < maxBatches) {
             batchCount++;
@@ -416,11 +368,12 @@
 
             const promises = Array.from({ length: batchSize }, () => {
                 const randomId = Math.floor(Math.random() * maxBeatmapId) + 1;
-                return fetchMapById(randomId, token);
+                return fetchMapById(randomId, statusEl);
             });
 
             const results = await Promise.all(promises);
             foundMap = results.find(res => res !== null);
+            if (!foundMap) await sleep(300);
         }
 
         searchBtn.innerText = "Search & Open Beatmap";
@@ -438,7 +391,7 @@
             statusEl.innerText = autoCopy ? `ID (${foundMap.id}) copied! Redirecting...` : "Map found! Redirecting...";
             window.location.href = foundMap.url;
         } else {
-            statusEl.innerText = "No map found in 150 attempts. Try again!";
+            statusEl.innerText = "No map found in 160 attempts. Try again!";
         }
     }
 
