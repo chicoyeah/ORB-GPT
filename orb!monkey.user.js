@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         orb!monkey
 // @namespace    http://tampermonkey.net/
-// @version      1.2
+// @version      1.3
 // @description  Find random beatmaps using your osu! login (no API keys needed)
 // @author       Chicoyeah
 // @match        https://osu.ppy.sh/*
@@ -301,8 +301,66 @@
         } catch (e) {
             return null;
         }
-        if (!data) return null;
+        return matchSet(data);
+    }
 
+    // Approx. ranked sets per year (measured). Years after the table reuse the latest full-year rate.
+    const RANKED_PER_YEAR = {
+        2007: 200, 2008: 500, 2009: 900, 2010: 1500, 2011: 1200, 2012: 1400, 2013: 1450,
+        2014: 1350, 2015: 1500, 2016: 1800, 2017: 1900, 2018: 3000, 2019: 3700, 2020: 3300,
+        2021: 4300, 2022: 4600, 2023: 4500, 2024: 7500, 2025: 8300
+    };
+    const LAST_TABLE_YEAR = 2025;
+
+    function randomRankedDate() {
+        const now = Date.now();
+        const currentYear = new Date(now).getUTCFullYear();
+        const weights = [];
+        for (let y = 2007; y <= currentYear; y++) {
+            const yearStart = Date.UTC(y, 0, 1);
+            const yearEnd = Math.min(Date.UTC(y + 1, 0, 1), now);
+            const fraction = (yearEnd - yearStart) / (Date.UTC(y + 1, 0, 1) - yearStart);
+            const perYear = RANKED_PER_YEAR[y] ?? RANKED_PER_YEAR[LAST_TABLE_YEAR];
+            weights.push({ year: y, start: yearStart, end: yearEnd, weight: perYear * fraction });
+        }
+
+        let pick = Math.random() * weights.reduce((s, w) => s + w.weight, 0);
+        let chosen = weights[weights.length - 1];
+        for (const w of weights) {
+            pick -= w.weight;
+            if (pick < 0) { chosen = w; break; }
+        }
+        return Math.floor(chosen.start + Math.random() * (chosen.end - chosen.start));
+    }
+
+    // One request returns up to 50 sets from a random point in ranked history
+    async function fetchRandomPage(statusEl) {
+        const date = randomRankedDate();
+        const params = new URLSearchParams({ s: 'any', sort: 'ranked_desc' });
+        params.set('cursor[approved_date]', date);
+        params.set('cursor[id]', 0);
+
+        const csrf = document.querySelector('meta[name="csrf-token"]');
+        const res = await fetchWithBackoff(`https://osu.ppy.sh/beatmapsets/search?${params}`, {
+            credentials: 'include',
+            headers: {
+                'Accept': 'application/json, text/javascript, */*; q=0.01',
+                'X-Requested-With': 'XMLHttpRequest',
+                ...(csrf ? { 'X-CSRF-Token': csrf.content } : {})
+            }
+        }, statusEl);
+        if (!res || !res.ok) return null;
+
+        try {
+            const data = await res.json();
+            const matches = (data.beatmapsets || []).map(matchSet).filter(Boolean);
+            return matches.length ? matches[Math.floor(Math.random() * matches.length)] : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function matchSet(data) {
         const acceptAnyStatus = document.getElementById('rf-any-status').checked;
 
         if (!acceptAnyStatus && !['ranked', 'loved', 'qualified', 'approved'].includes(data.status)) {
@@ -344,36 +402,38 @@
 
         searchBtn.innerText = "Searching...";
         searchBtn.disabled = true;
-        statusEl.innerText = "Fetching Max ID...";
-
-        maxBeatmapId = await fetchLatestWipMapId(statusEl);
-
-        if (!maxBeatmapId) {
-            statusEl.innerText = "Error: Failed to fetch Max ID! (try reloading/logging in again)";
-            searchBtn.innerText = "Search & Open Beatmap";
-            searchBtn.disabled = false;
-            return;
-        }
-
-        statusEl.innerText = `Max ID: ${maxBeatmapId}. Searching...`;
 
         let foundMap = null;
-        let batchCount = 0;
-        const maxBatches = 40;
-        const batchSize = 4;
+        let attempts = 0;
+        const anyStatus = document.getElementById('rf-any-status').checked;
 
-        while (!foundMap && batchCount < maxBatches) {
-            batchCount++;
-            statusEl.innerText = `Checking (Batch ${batchCount}/${maxBatches}) [Max: ${maxBeatmapId}]...`;
+        if (!anyStatus) {
+            const maxAttempts = 20;
+            while (!foundMap && attempts < maxAttempts) {
+                attempts++;
+                statusEl.innerText = `Searching (${attempts}/${maxAttempts})...`;
+                foundMap = await fetchRandomPage(statusEl);
+                if (!foundMap) await sleep(700);
+            }
+        } else {
+            // Unranked maps aren't in the ranked history, so probe random IDs one at a time
+            statusEl.innerText = "Fetching Max ID...";
+            maxBeatmapId = await fetchLatestWipMapId(statusEl);
 
-            const promises = Array.from({ length: batchSize }, () => {
-                const randomId = Math.floor(Math.random() * maxBeatmapId) + 1;
-                return fetchMapById(randomId, statusEl);
-            });
+            if (!maxBeatmapId) {
+                statusEl.innerText = "Error: Failed to fetch Max ID! Wait a minute and retry.";
+                searchBtn.innerText = "Search & Open Beatmap";
+                searchBtn.disabled = false;
+                return;
+            }
 
-            const results = await Promise.all(promises);
-            foundMap = results.find(res => res !== null);
-            if (!foundMap) await sleep(300);
+            const maxAttempts = 60;
+            while (!foundMap && attempts < maxAttempts) {
+                attempts++;
+                statusEl.innerText = `Checking ${attempts}/${maxAttempts} [Max: ${maxBeatmapId}]...`;
+                foundMap = await fetchMapById(Math.floor(Math.random() * maxBeatmapId) + 1, statusEl);
+                if (!foundMap) await sleep(600);
+            }
         }
 
         searchBtn.innerText = "Search & Open Beatmap";
@@ -391,7 +451,7 @@
             statusEl.innerText = autoCopy ? `ID (${foundMap.id}) copied! Redirecting...` : "Map found! Redirecting...";
             window.location.href = foundMap.url;
         } else {
-            statusEl.innerText = "No map found in 160 attempts. Try again!";
+            statusEl.innerText = "No map found. Try again or widen the filters!";
         }
     }
 
