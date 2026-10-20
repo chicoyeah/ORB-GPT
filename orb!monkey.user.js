@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         orb!monkey
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.4
 // @description  Find random beatmaps using your osu! login (no API keys needed)
-// @author       Chicoyeah
+// @author       chicoyeah
 // @match        https://osu.ppy.sh/*
 // @connect      osu.ppy.sh
 // @grant        GM_getValue
@@ -16,6 +16,7 @@
     'use strict';
 
     let maxBeatmapId = null;
+    let statusClearTimeout = null;
 
     function getRandomColor() {
         const hue = Math.floor(Math.random() * 360);
@@ -43,6 +44,7 @@
         const savedMania = GM_getValue('rf_mode_mania', true);
         const savedAnyStatus = GM_getValue('rf_any_status', false);
         const savedAutoCopy = GM_getValue('rf_auto_copy', false);
+        const savedAutoOpen = GM_getValue('rf_auto_open', false);
         const savedMinStars = GM_getValue('rf_min_stars', '0');
         const savedMaxStars = GM_getValue('rf_max_stars', '10');
 
@@ -117,6 +119,10 @@
 
             <div style="margin-bottom: 6px; font-size: 11px;">
                 <label style="cursor: pointer;"><input type="checkbox" id="rf-auto-copy" ${savedAutoCopy ? 'checked' : ''}> Copy Mapset ID to clipboard</label>
+            </div>
+
+            <div style="margin-bottom: 6px; font-size: 11px;">
+                <label style="cursor: pointer;"><input type="checkbox" id="rf-auto-open" ${savedAutoOpen ? 'checked' : ''}> Open map in osu!</label>
             </div>
 
             <div style="margin-bottom: 8px; background: #21252b; padding: 8px; border-radius: 6px; border: 1px solid #2c313a;">
@@ -194,6 +200,7 @@
         const maniaCb = document.getElementById('rf-mania');
         const anyCb = document.getElementById('rf-any-status');
         const autoCopyCb = document.getElementById('rf-auto-copy');
+        const autoOpenCb = document.getElementById('rf-auto-open');
 
         if (osuCb) osuCb.onchange = (e) => GM_setValue('rf_mode_osu', e.target.checked);
         if (taikoCb) taikoCb.onchange = (e) => GM_setValue('rf_mode_taiko', e.target.checked);
@@ -201,6 +208,7 @@
         if (maniaCb) maniaCb.onchange = (e) => GM_setValue('rf_mode_mania', e.target.checked);
         if (anyCb) anyCb.onchange = (e) => GM_setValue('rf_any_status', e.target.checked);
         if (autoCopyCb) autoCopyCb.onchange = (e) => GM_setValue('rf_auto_copy', e.target.checked);
+        if (autoOpenCb) autoOpenCb.onchange = (e) => GM_setValue('rf_auto_open', e.target.checked);
 
         const minSlider = document.getElementById('rf-min-stars');
         const maxSlider = document.getElementById('rf-max-stars');
@@ -385,8 +393,10 @@
 
         if (validBeatmaps.length === 0) return null;
 
+        const beatmap = validBeatmaps[Math.floor(Math.random() * validBeatmaps.length)];
         return {
             id: data.id.toString(),
+            beatmapId: beatmap.id.toString(),
             url: `https://osu.ppy.sh/beatmapsets/${data.id}`
         };
     }
@@ -394,6 +404,9 @@
     async function startSearch() {
         const statusEl = document.getElementById('rf-status');
         const searchBtn = document.getElementById('rf-search-btn');
+
+        clearTimeout(statusClearTimeout);
+        statusClearTimeout = null;
 
         if (!isLoggedIn()) {
             statusEl.innerText = "Please log in to osu! first!";
@@ -441,6 +454,7 @@
 
         if (foundMap) {
             const autoCopy = document.getElementById('rf-auto-copy').checked;
+            const autoOpen = document.getElementById('rf-auto-open').checked;
             if (autoCopy) {
                 if (typeof GM_setClipboard === 'function') {
                     GM_setClipboard(foundMap.id);
@@ -448,8 +462,16 @@
                     navigator.clipboard.writeText(foundMap.id);
                 }
             }
-            statusEl.innerText = autoCopy ? `ID (${foundMap.id}) copied! Redirecting...` : "Map found! Redirecting...";
-            window.location.href = foundMap.url;
+            const successMessage = autoCopy ? `ID (${foundMap.id}) copied! Opening...` : "Map found! Opening...";
+            statusEl.innerText = successMessage;
+            const timeout = setTimeout(() => {
+                if (statusClearTimeout === timeout) {
+                    statusEl.innerText = '';
+                    statusClearTimeout = null;
+                }
+            }, 4000);
+            statusClearTimeout = timeout;
+            window.location.href = autoOpen ? `osu://b/${foundMap.beatmapId}` : foundMap.url;
         } else {
             statusEl.innerText = "No map found. Try again or widen the filters!";
         }
