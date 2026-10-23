@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         orb!monkey
 // @namespace    http://tampermonkey.net/
-// @version      1.4
+// @version      1.5
 // @description  Find random beatmaps using your osu! login (no API keys needed)
 // @author       chicoyeah
 // @match        https://osu.ppy.sh/*
@@ -471,7 +471,7 @@
                 }
             }, 4000);
             statusClearTimeout = timeout;
-            window.location.href = autoOpen ? `osu://b/${foundMap.beatmapId}` : foundMap.url;
+            window.location.href = autoOpen ? `osu://s/${foundMap.id}` : foundMap.url;
         } else {
             statusEl.innerText = "No map found. Try again or widen the filters!";
         }
